@@ -1,0 +1,29 @@
+{
+  "name": "webrtc_server",
+  "version": "1.0.0",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc",
+    "start" :"node dist/server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.50.0",
+    "dotenv": "^16.5.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0",
+    "node-fetch": "^3.3.2",
+    "pg": "^8.16.0",
+    "uuid": "^11.1.0",
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.52.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.15.30"
+  }
+}
