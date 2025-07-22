@@ -94,6 +94,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       builder: (context, bgImage, _) {
         return Stack(
           children: [
+            
             if (bgImage != null) Positioned.fill(child: bgImage),
             Scaffold(
               resizeToAvoidBottomInset: true,
@@ -157,7 +158,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       ].request();
                       if (statuses[Permission.camera]!.isGranted &&
                           statuses[Permission.microphone]!.isGranted) {
-                            ref.read(webRTCNotifierProvider.notifier).startCall(widget.chatId!);
+                            ref.read(webRTCNotifierProvider.notifier).startCall(widget.chatee.id);
                             
                             
                         Navigator.push(

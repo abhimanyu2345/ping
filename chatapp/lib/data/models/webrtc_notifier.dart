@@ -1,5 +1,10 @@
 import 'dart:convert';
+import 'package:chatapp/data/models/user_data.dart';
+import 'package:chatapp/data/models/user_data_provider.dart';
+import 'package:chatapp/main.dart';
 import 'package:chatapp/state_management/riverpods.dart';
+import 'package:chatapp/widgets/incoming_call_panel_widget.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -198,6 +203,47 @@ class WebRTCNotifier extends AutoDisposeNotifier<void> {
     _localStream?.getAudioTracks().forEach((track) {
       track.enabled = isEnabled;
     });
-    print('Audio tracks ${isEnabled ? 'unmuted' : 'muted'}');
+    
   }
+
+
+ Future<void> handleCall(Map<String, dynamic> payload) async {
+  switch (payload['type']) {
+    case 'offer':
+      UserProfileData? profile = ref.read(userDataProvider)[payload['to']];
+      if (profile == null) {
+        await ref.read(userDataProvider.notifier).fetchUserProfileData(payload['to']);
+        profile = ref.read(userDataProvider)[payload['to']];
+      }
+
+      final context = navigatorKey.currentState?.overlay?.context;
+
+      if (context != null && profile != null) {
+        showGeneralDialog(
+          context: context,
+          barrierDismissible: true,
+          barrierLabel: 'Dismiss',
+          barrierColor: Colors.black.withOpacity(0.3),
+          transitionDuration: const Duration(milliseconds: 300),
+          pageBuilder: (context, _, __) {
+            return Align(
+              alignment: Alignment.topCenter,
+              child: IncomingCallPanelWidget(profile: profile!),
+            );
+          },
+          transitionBuilder: (context, animation, _, child) {
+            final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, -1), // Start above
+                end: Offset.zero,
+              ).animate(curved),
+              child: child,
+            );
+          },
+        );
+      }
+      break;
+  }
+}
 }

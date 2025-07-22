@@ -3,6 +3,7 @@
 import 'dart:convert';
 
 import 'package:chatapp/data/constants.dart';
+import 'package:chatapp/data/models/webrtc_notifier.dart';
 
 import 'package:chatapp/state_management/riverpods.dart';
 
@@ -57,13 +58,13 @@ class SignalingNotifier extends Notifier<void> {
     if (decoded['type'] == 'message') {
       ref.read(chatProvider.notifier).receiveMessage(decoded['payload']);
     } else if(decoded['type']=='seen'){
-      print('here');
+      
       ref.read(chatProvider.notifier).setSeen(decoded['payload'], true);
 
     } else if (decoded['type'] == 'typing') {
       // handle typing
     } else if (decoded['type'] == 'call') {
-      print('hadling call');
+      ref.read(webRTCNotifierProvider.notifier).handleCall(decoded['payload']);
       
     }
     

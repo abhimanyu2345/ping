@@ -35,10 +35,15 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 class _MyAppState extends ConsumerState<MyApp> {
   @override
   void initState() {
-    ref.read(userIdProvider.notifier).setId();
-    getTheme();
+    
     super.initState();
+    ref.read(userIdProvider.notifier).setId();
+    ref.read(signalingProvider.notifier);
     ref.read(webRTCNotifierProvider.notifier).build();
+    getTheme();
+
+
+    
   }
   void getTheme()async{
     final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -57,6 +62,7 @@ class _MyAppState extends ConsumerState<MyApp> {
       
       theme: ThemeData.from(colorScheme:value? ColorScheme.dark():ColorScheme.light()),
       home: WidgetTree()
+      
       
 
 

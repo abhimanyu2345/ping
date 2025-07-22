@@ -86,6 +86,7 @@ export default class ConnectionManager {
     handleCall(payload, from) {
         console.log(`handling  paylod `, payload);
         const recipientWS = this.clients.get(payload.to);
+        console.log(recipientWS);
         if (recipientWS != undefined) {
             recipientWS.send(JSON.stringify({
                 'type': 'call',
@@ -98,7 +99,7 @@ export default class ConnectionManager {
         console.log({
             'type': 'call',
             'payload': {
-                ...payload,
+                ...newJson,
                 'from': from,
             }
         });

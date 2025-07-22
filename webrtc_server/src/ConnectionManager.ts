@@ -115,12 +115,14 @@ export default class ConnectionManager {
 private handleCall(payload:any, from:String){
   console.log(`handling  paylod `,payload);
   const recipientWS: uWS.WebSocket<userString>|undefined =this.clients.get(payload.to);
-   const {to, newJson} = payload;
+  console.log(recipientWS);
+
+   
   if(recipientWS !=undefined){
     recipientWS.send(JSON.stringify({
       'type':'call',
       'payload': {
-      ...newJson,
+      ...payload,
       'from':from,
         
 
@@ -128,15 +130,7 @@ private handleCall(payload:any, from:String){
     }));
     
   }
-  console.log({
-      'type':'call',
-      'payload': {
-      ...newJson,
-      'from':from,
-        
-
-      }
-    });
+  
   
 
 }

@@ -30,7 +30,6 @@ void receiveMessage(dynamic decoded){
   );
 
 
-
 }
  
 void sendMessage(String? id, String to, dynamic content, MessageType type) async {
@@ -160,15 +159,7 @@ void setSeen(Map<String, dynamic> payload, bool isIncoming) {
 
     state = {
   ...state, // copy all other chats
-  chatId: updated, // replace only this chat’s messages
-};
-}
-void initChat(String id){
-  Map<String, List<ChatMessage>>  tstate = state;
-
-  tstate[id] =[];
-  state=tstate;
-
+  chatId: updated,};
 }
 String? fetchUserChatId(String id){
   

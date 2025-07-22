@@ -44,6 +44,7 @@ class HttpServices{
 
     print('token got $token');
     if (token != null) {
+      
       _dio!.options.headers['Authorization'] = 'Bearer $token';
     }
   }
