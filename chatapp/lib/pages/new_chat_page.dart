@@ -121,21 +121,26 @@ class _NewChatPageState extends ConsumerState<NewChatPage> {
                 ),
               );
             }
+             List<MapEntry<String,Contact>> filteredActive=[];
+             List<MapEntry<String,Contact>> filteredNonActive=[];
 
             // ✅ Filter active + not in existing chats
-            final filteredActive = _normalizedContactMap.entries.where((entry) {
-              final normalized = entry.key;
+
+            for( var entry in _normalizedContactMap.entries){
+               final normalized = entry.key;
               final isExisting = existingChats.contains(normalized);
               final isActive = _activeContacts.containsKey(normalized);
-              return !isExisting && isActive;
-            }).toList();
+              if(!isActive){
+                filteredNonActive.add(entry);
 
-            // ✅ Filter non-active + not in existing chats
-            final filteredNonActive = _normalizedContactMap.entries.where((entry) {
-              final normalized = entry.key;
-              final isActive = _activeContacts.containsKey(normalized);
-              return   !isActive;
-            }).toList();
+              }
+              else if(isExisting){
+                filteredActive.add(entry);
+              }
+
+            }
+
+           
 
             return SingleChildScrollView(
               child: Padding(

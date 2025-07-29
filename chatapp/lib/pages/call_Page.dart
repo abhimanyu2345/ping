@@ -13,18 +13,28 @@ class WebRTCCallPage extends ConsumerStatefulWidget {
 
 class _WebRTCCallPageState extends ConsumerState<WebRTCCallPage> {
   late RTCVideoRenderer _localRenderer;
+  late RTCVideoRenderer _remoteRenderer;
+  
   bool _isAudioEnabled = false;
 
   @override
   void initState() {
     super.initState();
     _localRenderer = RTCVideoRenderer();
+    _remoteRenderer = RTCVideoRenderer();
     _initRenderers();
   }
 
   Future<void> _initRenderers() async {
     await _localRenderer.initialize();
+    await _remoteRenderer.initialize();
+    _remoteRenderer.srcObject= ref.watch(webRTCNotifierProvider).remoteStream;
     await _startCamera();
+    ref.listen<WebRTCState>(webRTCNotifierProvider, (prev, next) {
+    if (next.remoteStream != null && next.remoteStream != prev?.remoteStream) {
+      _remoteRenderer.srcObject = next.remoteStream;
+    }
+  });
   }
 
   Future<void> _startCamera() async {
@@ -55,6 +65,8 @@ class _WebRTCCallPageState extends ConsumerState<WebRTCCallPage> {
   // ✅ Dispose the renderer
   _localRenderer.dispose();
 
+  _remoteRenderer.dispose();
+
   // ✅ Invalidate the Notifier so it can close PeerConnection too
   ref.invalidate(webRTCNotifierProvider);
 
@@ -63,9 +75,13 @@ class _WebRTCCallPageState extends ConsumerState<WebRTCCallPage> {
 
   @override
   Widget build(BuildContext context) {
+    
     final webRTC = ref.watch(webRTCNotifierProvider.notifier);
 
+    
+
     return PopScope(
+      
       onPopInvoked: (didPop) {
         if(didPop){
           dispose();
@@ -77,11 +93,44 @@ class _WebRTCCallPageState extends ConsumerState<WebRTCCallPage> {
         }
       },
       child: Scaffold(
-        body: Center(
-          child: _localRenderer.textureId != null
-              ? RTCVideoView(_localRenderer)
-              : const CircularProgressIndicator(),
+        body: 
+
+        
+        
+        Stack(
+          children:[ 
+            (_remoteRenderer.srcObject!=null)?
+            RTCVideoView(_remoteRenderer):
+            Center(child: Text('no video yey'),),
+            
+            
+            
+            
+            
+            
+            
+            Positioned(
+              bottom: 16,
+      right: 16,
+      width: 120,
+      height: 160,
+               
+            child: _localRenderer.textureId != null
+                ? RTCVideoView(_localRenderer,)
+                : const CircularProgressIndicator(),
+          ),]
         ),
+
+
+
+
+
+
+
+
+
+
+
         floatingActionButton: IconButton(
           onPressed: () {
             showModalBottomSheet(

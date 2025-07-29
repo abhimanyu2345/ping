@@ -1,221 +1,177 @@
 import 'dart:convert';
-import 'package:chatapp/data/models/user_data.dart';
-import 'package:chatapp/data/models/user_data_provider.dart';
-import 'package:chatapp/main.dart';
-import 'package:chatapp/state_management/riverpods.dart';
-import 'package:chatapp/widgets/incoming_call_panel_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chatapp/widgets/incoming_call_panel_widget.dart';
+import 'package:chatapp/data/models/user_data_provider.dart';
+import 'package:chatapp/data/models/user_data.dart';
+import 'package:chatapp/state_management/riverpods.dart';
+import 'package:chatapp/main.dart';
 
+final webRTCNotifierProvider = NotifierProvider<WebRTCNotifier, WebRTCState>(() => WebRTCNotifier());
 
-final webRTCNotifierProvider =
-    NotifierProvider.autoDispose<WebRTCNotifier, void>(WebRTCNotifier.new);
+class WebRTCState {
+  final RTCPeerConnection? peerConnection;
+  final MediaStream? localStream;
+  final String? callerId;
+  final bool isMuted;
+  final MediaStream? remoteStream;
 
-class WebRTCNotifier extends AutoDisposeNotifier<void> {
-  RTCPeerConnection? _peerConnection;
-  String? callerId ;
-  MediaStream? _localStream;
+  WebRTCState({
+    this.peerConnection,
+    this.localStream,
+    this.callerId,
+    this.isMuted = false,
+    this.remoteStream,
+  });
+
+  WebRTCState copyWith({
+    RTCPeerConnection? peerConnection,
+    MediaStream? localStream,
+    MediaStream? remoteStream,
+    String? callerId,
+    
+    bool? isMuted,
+  }) {
+    return WebRTCState(
+      peerConnection: peerConnection ?? this.peerConnection,
+      localStream: localStream ?? this.localStream,
+      callerId: callerId ?? this.callerId,
+      isMuted: isMuted ?? this.isMuted,
+    );
+  }
+}
+
+class WebRTCNotifier extends Notifier<WebRTCState> {
   bool _isDisposed = false;
 
   @override
-  void build() {
-    // 👇 Keeps this Notifier alive even if not watched briefly.
-    final link = ref.keepAlive();
-
-    ref.onDispose(() {
-      _isDisposed = true;
-      _disposeResources();
-      link.close();
-    });
-  }
+  WebRTCState build() => WebRTCState();
 
   Future<MediaStream> getLocalStream() async {
-    if (_localStream != null) return _localStream!;
+    if (state.localStream != null) return state.localStream!;
+    final stream = await navigator.mediaDevices.getUserMedia({
+      'audio': true,
+      'video': {'facingMode': 'user'},
+    });
 
-    try {
-      final constraints = {
-        'audio': true,
-        'video': {'facingMode': 'user'}
-      };
-
-      print('Requesting user media...');
-      _localStream = await navigator.mediaDevices.getUserMedia(constraints);
-      print('Got local stream: $_localStream');
-
-      if (_isDisposed) {
-        _localStream?.getTracks().forEach((t) => t.stop());
-        _localStream = null;
-        throw Exception('WebRTCNotifier disposed during getLocalStream');
-      }
-
-      return _localStream!;
-    } catch (e, st) {
-      print('Error getting local stream: $e\n$st');
-      rethrow;
+    if (_isDisposed) {
+      stream.getTracks().forEach((t) => t.stop());
+      throw Exception('Disposed during getLocalStream');
     }
+
+    state = state.copyWith(localStream: stream);
+    return stream;
   }
 
   Future<void> _createPeerConnection() async {
-    try {
-      final config = {
-        'iceServers': [
-          {'url': 'stun:stun.l.google.com:19302'}
-        ]
-      };
+    final config = {
+      'iceServers': [
+        {'url': 'stun:stun.l.google.com:19302'}
+      ]
+    };
+    final pc = await createPeerConnection(config);
+    final stream = await getLocalStream();
 
-      _peerConnection = await createPeerConnection(config);
-      print('PeerConnection created: $_peerConnection');
+    for (final track in stream.getTracks()) {
+      await pc.addTrack(track, stream);
+    }
 
-      final stream = await getLocalStream();
-
-      if (_isDisposed) {
-        stream.getTracks().forEach((t) => t.stop());
-        _peerConnection?.close();
-        print('Notifier disposed during peer connection setup.');
-        return;
-      }
-
-      for (final track in stream.getTracks()) {
-        await _peerConnection?.addTrack(track, stream);
-        print('Added track: $track');
-      }
-
-      _peerConnection?.onIceCandidate = (candidate) {
-        print('New ICE candidate: ${candidate.toMap()}');
-        ref.read(signalingProvider.notifier).sendMessage(jsonEncode({
-          'type':'call',
-          'payload':{
+    pc.onIceCandidate = (candidate) {
+      ref.read(signalingProvider.notifier).sendMessage(jsonEncode({
+        'type': 'call',
+        'payload': {
           'type': 'candidate',
-          'to': callerId,
+          'to': state.callerId,
           'candidate': {
             'candidate': candidate.candidate,
             'sdpMid': candidate.sdpMid,
-            'sdpMLineIndex': candidate.sdpMLineIndex,}
+            'sdpMLineIndex': candidate.sdpMLineIndex,
           },
-        }));
-      };
-    } catch (e, st) {
-      print('Error in _createPeerConnection: $e\n$st');
-      rethrow;
-    }
+        },
+      }));
+    };
+
+    state = state.copyWith(peerConnection: pc);
   }
 
   Future<void> startCall(String id) async {
-    callerId =id;
-    print('inside call _isDisposed=$_isDisposed');
+    state = state.copyWith(callerId: id);
+    await _createPeerConnection();
+    final offer = await state.peerConnection!.createOffer();
+    await state.peerConnection!.setLocalDescription(offer);
 
-    try {
-      await _createPeerConnection();
-      if (_isDisposed) return;
-
-      final offer = await _peerConnection!.createOffer();
-      await _peerConnection!.setLocalDescription(offer);
-
-      ref.read(signalingProvider.notifier).sendMessage(jsonEncode({
-        'type':'call',
-        'payload':{
-        
+    ref.read(signalingProvider.notifier).sendMessage(jsonEncode({
+      'type': 'call',
+      'payload': {
         'type': 'offer',
         'to': id,
-        'sdp': offer.sdp,}
-      }));
-
-      print('Offer sent');
-    } catch (e, st) {
-      print('Error in startCall: $e\n$st');
-    }
+        'sdp': offer.sdp,
+      }
+    }));
   }
 
   Future<void> handleRemoteOffer(String sdp, String from) async {
-    try {
-      await _createPeerConnection();
-      if (_isDisposed) return;
+    await _createPeerConnection();
+    await state.peerConnection!.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
+    final answer = await state.peerConnection!.createAnswer();
+    await state.peerConnection!.setLocalDescription(answer);
 
-      await _peerConnection!.setRemoteDescription(
-        RTCSessionDescription(sdp, 'offer'),
-      );
-      if (_isDisposed) return;
-
-      final answer = await _peerConnection!.createAnswer();
-      await _peerConnection!.setLocalDescription(answer);
-
-      if (_isDisposed) return;
-
-      ref.read(signalingProvider.notifier).sendMessage(jsonEncode({
-        'type':'call',
-        'payload':{
+    ref.read(signalingProvider.notifier).sendMessage(jsonEncode({
+      'type': 'call',
+      'payload': {
         'type': 'answer',
-        'to':from,        
-        'sdp': answer.sdp,}
-      }));
-    } catch (e, st) {
-      print('Error in handleRemoteOffer: $e\n$st');
-    }
+        'to': from,
+        'sdp': answer.sdp,
+      }
+    }));
   }
 
   Future<void> handleRemoteAnswer(String sdp) async {
-    try {
-      if (_peerConnection == null) return;
-      await _peerConnection!.setRemoteDescription(
-        RTCSessionDescription(sdp, 'answer'),
-      );
-    } catch (e, st) {
-      print('Error in handleRemoteAnswer: $e\n$st');
-    }
+    
+    await state.peerConnection?.setRemoteDescription(RTCSessionDescription(sdp, 'answer'));
+    state.peerConnection?.onTrack =(RTCTrackEvent event) {
+  if (event.streams.isNotEmpty) {
+    final remoteStream = event.streams[0];
+    // Update state with remote stream or pass it to a video renderer
+    state = state.copyWith(remoteStream: remoteStream);
   }
 
-  Future<void> handleRemoteCandidate(Map<String, dynamic> candidateMap) async {
-    try {
-      if (_peerConnection == null) return;
-
-      final candidate = RTCIceCandidate(
-        candidateMap['candidate'],
-        candidateMap['sdpMid'],
-        candidateMap['sdpMLineIndex'],
-      );
-      await _peerConnection!.addCandidate(candidate);
-    } catch (e, st) {
-      print('Error in handleRemoteCandidate: $e\n$st');
-    }
+  };
   }
 
-  void _disposeResources() {
-    _localStream?.getTracks().forEach((track) => track.stop());
-    _peerConnection?.close();
-    _peerConnection = null;
-    _localStream = null;
-    print('Disposed all resources');
+  Future<void> handleRemoteCandidate(Map<String, dynamic> c) async {
+    final candidate = RTCIceCandidate(c['candidate'], c['sdpMid'], c['sdpMLineIndex']);
+    await state.peerConnection?.addCandidate(candidate);
   }
 
   Future<void> switchCamera() async {
-    try {
-      final videoTrack = _localStream?.getVideoTracks().first;
-      if (videoTrack != null) {
-        await Helper.switchCamera(videoTrack);
-      }
-    } catch (e) {
-      print('Error switching camera: $e');
+    final videoTrack = state.localStream?.getVideoTracks().first;
+    if (videoTrack != null) {
+      await Helper.switchCamera(videoTrack);
     }
   }
 
-  void toggleMute(bool isEnabled) {
-    _localStream?.getAudioTracks().forEach((track) {
-      track.enabled = isEnabled;
-    });
-    
+  void toggleMute(bool enable) {
+    state.localStream?.getAudioTracks().forEach((track) => track.enabled = enable);
+    state = state.copyWith(isMuted: !enable);
   }
 
+  void disposeResources() {
+    state.localStream?.getTracks().forEach((t) => t.stop());
+    state.peerConnection?.close();
+    state = WebRTCState();
+    _isDisposed = true;
+  }
 
- Future<void> handleCall(Map<String, dynamic> payload) async {
-  switch (payload['type']) {
+  Future<void> handleCall(Map<String, dynamic> payload) async {
+    switch (payload['type']) {
     case 'offer':
       UserProfileData? profile = ref.read(userDataProvider)[payload['to']];
       if (profile == null) {
         await ref.read(userDataProvider.notifier).fetchUserProfileData(payload['to']);
         profile = ref.read(userDataProvider)[payload['to']];
       }
-
       final context = navigatorKey.currentState?.overlay?.context;
 
       if (context != null && profile != null) {
@@ -225,25 +181,20 @@ class WebRTCNotifier extends AutoDisposeNotifier<void> {
           barrierLabel: 'Dismiss',
           barrierColor: Colors.black.withOpacity(0.3),
           transitionDuration: const Duration(milliseconds: 300),
-          pageBuilder: (context, _, __) {
-            return Align(
-              alignment: Alignment.topCenter,
-              child: IncomingCallPanelWidget(profile: profile!),
-            );
-          },
-          transitionBuilder: (context, animation, _, child) {
-            final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
-            return SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0, -1), // Start above
-                end: Offset.zero,
-              ).animate(curved),
-              child: child,
-            );
-          },
+          pageBuilder: (context, _, __) => Align(
+            alignment: Alignment.topCenter,
+            child: IncomingCallPanelWidget(profile: profile!),
+          ),
+          transitionBuilder: (context, animation, _, child) => SlideTransition(
+            position: Tween<Offset>(begin: const Offset(0, -1), end: Offset.zero)
+                .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+            child: child,
+          ),
         );
       }
       break;
+      
+
+    }
   }
-}
 }
