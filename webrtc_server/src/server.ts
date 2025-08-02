@@ -2,7 +2,8 @@ import uWS from 'uWebSockets.js';
 import ConnectionManager from './ConnectionManager.js';
 import { userString } from './constants.js';
 import { authenticate, decode, } from './sericve.js';
-import { createUser, fetchActiveUsers, fetchMessages } from './database.js';
+import { SupabaseService } from './database.js';
+import { privateEncrypt } from 'crypto';
 const Manager = new ConnectionManager();
 
 uWS.App()
@@ -54,7 +55,7 @@ uWS.App()
        .end();
   })
   .post('/register', async(res, req) => {
-    res.writeHeader('Access-Control-Allow-Origin', '*');
+  
     const refreshToken =req.getHeader('authorization').split(' ')[1];
     var data;
     try{
@@ -65,7 +66,7 @@ uWS.App()
      if(sub!=null){
 
       data = await decode(res);
-      const result = await createUser(data);
+      const result = await SupabaseService.createUser(data);
       res.cork(()=>{
         res.writeHeader('Access-Control-Allow-Origin', '*');
         res.writeStatus(result?'200':'400').end();
@@ -105,7 +106,7 @@ uWS.App()
   });
 
   try {
-    const messages = await fetchMessages(id);
+    const messages = await SupabaseService.fetchMessages(id);
 
     if (aborted) return;
 
@@ -133,7 +134,7 @@ uWS.App()
     const data = await decode(res);
     
     if(data!=null){
-      const result = await fetchActiveUsers(data.contacts);
+      const result = await SupabaseService.fetchActiveUsers(data.contacts);
       console.log(result);
       res.cork(()=>{
       res.writeStatus('200').end(JSON.stringify(
@@ -151,6 +152,52 @@ uWS.App()
     console.error(e);
     res.writeStatus('400').end(String(e));
 
+  }
+})
+.get('/api/fetchCallHistory/:id', async (res, req) => {
+  let aborted = false;
+
+  res.onAborted(() => {
+    aborted = true;
+    console.warn('Request aborted');
+  });
+
+  const id = req.getParameter(0);
+  const authHeader = req.getHeader('authorization');
+  const refreshToken = authHeader?.split(' ')[1];
+
+  if (!id || !refreshToken) {
+    res.writeStatus('400 Bad Request').end('Missing ID or token');
+    return;
+  }
+
+  try {
+    const sub = await authenticate(refreshToken);
+    if (!sub) {
+      res.writeStatus('401 Unauthorized').end('Invalid token');
+      return;
+    }
+
+    const { error, data } = await SupabaseService.fetchCallHistory(id);
+
+    if (aborted) return;
+
+    if (error == null) {
+      res.cork(() =>
+        res.writeStatus('200 OK').end(JSON.stringify({ callHistory: data }))
+      );
+    } else {
+      console.error(error);
+      res.cork(() =>
+        res.writeStatus('500 Internal Server Error').end(JSON.stringify({ error }))
+      );
+    }
+  } catch (e) {
+    console.error(e);
+    if (aborted) return;
+    res.cork(() =>
+      res.writeStatus('500 Internal Server Error').end('Unexpected error')
+    );
   }
 })
 

@@ -49,3 +49,11 @@ export type Contacts={
   contact_id :String,
   phones:String[]
 }
+
+export enum CallStatus{
+  
+  MISSED='missed', 
+  REJECTED='rejected',
+  ENDED= 'ended', 
+  CANCELLED='cancelled'
+}

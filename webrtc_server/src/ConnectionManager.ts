@@ -1,10 +1,11 @@
 import * as uWS from "uWebSockets.js";
-import { ChatMessage, SignalMessage, userString } from "./constants";
-import { updateDatabase } from "./database.js";
+import { CallStatus, ChatMessage, SignalMessage, userString } from "./constants.js";
+import {  SupabaseService } from "./database.js";
 
 
 export default class ConnectionManager {
   private clients = new Map<string, uWS.WebSocket<userString>>();
+  private  supabase_service:SupabaseService= new SupabaseService();
 
   addUser(userId: string, user: uWS.WebSocket<userString>) {
     this.clients.set(userId, user);
@@ -28,11 +29,6 @@ export default class ConnectionManager {
 
   HandleMessage(userId: string, msg: SignalMessage) {
     console.log(`Handling message from ${userId}:`, msg);
-
-    if ( !msg.payload.to ) {
-      console.error("Invalid message payload");
-      return;
-    }
 
     try {
       
@@ -78,7 +74,7 @@ export default class ConnectionManager {
           'payload': payload
         }));
       }
-        updateDatabase(payload,'chat');
+        this.supabase_service.updateDatabase(payload,'chat');
      
        
       
@@ -100,7 +96,7 @@ export default class ConnectionManager {
           'payload': payload
         }));
       }
-    updateDatabase(payload, 'seen');
+    this.supabase_service.updateDatabase(payload, 'seen');
     }
     catch(e){
       console.error(e);
@@ -113,12 +109,28 @@ export default class ConnectionManager {
   
 }
 private handleCall(payload:any, from:String){
+  
   console.log(`handling  paylod `,payload);
+  
+
   const recipientWS: uWS.WebSocket<userString>|undefined =this.clients.get(payload.to);
-  console.log(recipientWS);
+  if(recipientWS ==undefined ){
+    if(payload.type =='offer'){
+      console.log('call handling');
+    this.supabase_service.registerCall({...payload,
+      from:from,
+      call_type:'video'
+    },CallStatus.MISSED);
+    }
+    
+
+  }
+
+  
 
    
-  if(recipientWS !=undefined){
+  else{
+
     recipientWS.send(JSON.stringify({
       'type':'call',
       'payload': {
@@ -127,7 +139,19 @@ private handleCall(payload:any, from:String){
         
 
       }
+
     }));
+    if(!['candidate','offer'].includes(payload.type)){
+       if(['missed','ended','cancelled','rejected'].includes(payload.type)){
+        this.supabase_service.updateCall(payload.id, payload.type);
+       }
+       else if( payload.type =='offer'){
+
+      this.supabase_service.registerCall({...payload, from:from,
+        
+      });}
+     }
+    
     
   }
   

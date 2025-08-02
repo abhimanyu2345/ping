@@ -40,4 +40,10 @@ export type Contacts = {
     contact_id: String;
     phones: String[];
 };
+export declare enum CallStatus {
+    MISSED = "missed",
+    REJECTED = "rejected",
+    ENDED = "ended",
+    CANCELLED = "cancelled"
+}
 //# sourceMappingURL=constants.d.ts.map

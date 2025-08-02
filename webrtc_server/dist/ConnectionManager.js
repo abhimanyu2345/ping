@@ -1,7 +1,9 @@
-import { updateDatabase } from "./database.js";
+import { CallStatus } from "./constants.js";
+import { SupabaseService } from "./database.js";
 export default class ConnectionManager {
     constructor() {
         this.clients = new Map();
+        this.supabase_service = new SupabaseService();
     }
     addUser(userId, user) {
         this.clients.set(userId, user);
@@ -23,10 +25,6 @@ export default class ConnectionManager {
     }
     HandleMessage(userId, msg) {
         console.log(`Handling message from ${userId}:`, msg);
-        if (!msg.payload.to) {
-            console.error("Invalid message payload");
-            return;
-        }
         try {
             switch (msg.type) {
                 case "chat":
@@ -62,7 +60,7 @@ export default class ConnectionManager {
                     'payload': payload
                 }));
             }
-            updateDatabase(payload, 'chat');
+            this.supabase_service.updateDatabase(payload, 'chat');
         }
         catch (e) {
             console.error("Error in handleChat:", e);
@@ -77,7 +75,7 @@ export default class ConnectionManager {
                     'payload': payload
                 }));
             }
-            updateDatabase(payload, 'seen');
+            this.supabase_service.updateDatabase(payload, 'seen');
         }
         catch (e) {
             console.error(e);
@@ -86,8 +84,16 @@ export default class ConnectionManager {
     handleCall(payload, from) {
         console.log(`handling  paylod `, payload);
         const recipientWS = this.clients.get(payload.to);
-        console.log(recipientWS);
-        if (recipientWS != undefined) {
+        if (recipientWS == undefined) {
+            if (payload.type == 'offer') {
+                console.log('call handling');
+                this.supabase_service.registerCall({ ...payload,
+                    from: from,
+                    call_type: 'video'
+                }, CallStatus.MISSED);
+            }
+        }
+        else {
             recipientWS.send(JSON.stringify({
                 'type': 'call',
                 'payload': {
@@ -95,14 +101,16 @@ export default class ConnectionManager {
                     'from': from,
                 }
             }));
-        }
-        console.log({
-            'type': 'call',
-            'payload': {
-                ...newJson,
-                'from': from,
+            if (!['candidate', 'offer'].includes(payload.type)) {
+                if (['missed', 'ended', 'cancelled', 'rejected'].includes(payload.type)) {
+                    this.supabase_service.updateCall(payload.id, payload.type);
+                }
+                else if (payload.type == 'offer') {
+                    this.supabase_service.registerCall({ ...payload, from: from,
+                    });
+                }
             }
-        });
+        }
     }
 }
 //# sourceMappingURL=ConnectionManager.js.map

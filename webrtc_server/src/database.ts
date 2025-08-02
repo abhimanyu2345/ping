@@ -1,193 +1,228 @@
-import { createClient } from '@supabase/supabase-js'
-import 'dotenv/config'
-import {  msg_type, UserProfileData } from './constants'
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import 'dotenv/config';
+import { CallStatus, msg_type, UserProfileData } from './constants.js';
 
 
-const SUPABASE_URL = process.env.SUPABASE_URL!
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-export async function createUser(data: UserProfileData):Promise<boolean> {
-   const mappedData = {
-    ...data,
-    blocked_users: data.blockedUsers,
-    image_bytes: data.imageBytes,
-    tag_name: data.tagName,
-    phone_number: data.phoneNumber,
-    last_seen: data.lastSeen,
-    status_message: data.statusMessage,
-    is_online: data.isOnline,
-  };
 
-  // Optionally remove camelCase keys to avoid leaking them
-  delete mappedData.blockedUsers;
-  delete mappedData.imageBytes;
-  delete mappedData.tagName;
-  delete mappedData.phoneNumber;
-  delete mappedData.lastSeen;
-  delete mappedData.statusMessage;
-  delete mappedData.isOnline;
+export class SupabaseService {
+  private static SUPABASE_URL = process.env.SUPABASE_URL!;
+  private static SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  private static supabase: SupabaseClient = createClient(
+    SupabaseService.SUPABASE_URL,
+    SupabaseService.SUPABASE_SERVICE_ROLE_KEY
+  );
 
-  const { error } = await supabase
-    .from('user_profiles')
-    .insert([mappedData]);
+  static async createUser(data: UserProfileData): Promise<boolean> {
+    const mappedData = {
+      ...data,
+      blocked_users: data.blockedUsers,
+      image_bytes: data.imageBytes,
+      tag_name: data.tagName,
+      phone_number: data.phoneNumber,
+      last_seen: data.lastSeen,
+      status_message: data.statusMessage,
+      is_online: data.isOnline,
+    };
 
-  if (error) {
-    console.error('Insert error:', error.message);
-    return false;
+    delete mappedData.blockedUsers;
+    delete mappedData.imageBytes;
+    delete mappedData.tagName;
+    delete mappedData.phoneNumber;
+    delete mappedData.lastSeen;
+    delete mappedData.statusMessage;
+    delete mappedData.isOnline;
+
+    const { error } = await this.supabase.from('user_profiles').insert([mappedData]);
+    if (error) {
+      console.error('Insert error:', error.message);
+      return false;
+    }
+
+    return true;
   }
 
-  return true;
-}
-export async function fetchMessages(userId: string): Promise<any[] | null> {
-  // 1. Get chat IDs the user is part of
-  const { data: participantChats, error: chatErr } = await supabase
-    .from('chat_participants')
-    .select('chat_id')
-    .eq('user_id', userId);
-
-  if (chatErr) {
-    console.error('Error fetching chat list:', chatErr.message);
-    return null;
-  }
-
-  const chatIds = participantChats.map(chat => chat.chat_id);
-
-  if (chatIds.length === 0) return [];
-
-  // 2. Fetch messages from those chats
-  const { data: messages, error: msgErr } = await supabase
-    .from('messages')
-    .select('*')
-    .in('chat_id', chatIds)
-    .order('time_sent', { ascending: false }); // Or ascending if needed
-
-  if (msgErr) {
-    console.error('Error fetching messages:', msgErr.message);
-    return null;
-  }
-
-  return messages;
-}
-
-
-export async function updateDatabase(payload: any, type:msg_type) {
-  if(type=='chat'){
-  try {
-    // 1️⃣ Does the chat exist?
-    const { data: chatExists, error: chatErr } = await supabase
-      .from("chats")
-      .select("chat_id")
-      .eq("chat_id", payload.chatId)
-      .maybeSingle();
+  static async fetchMessages(userId: string): Promise<any[] | null> {
+    const { data: participantChats, error: chatErr } = await SupabaseService.supabase
+      .from('chat_participants')
+      .select('chat_id')
+      .eq('user_id', userId);
 
     if (chatErr) {
-      console.error("Error checking chat:", chatErr.message);
-      return;
+      console.error('Error fetching chat list:', chatErr.message);
+      return null;
     }
 
-    let chatId = payload.chatId;
+    const chatIds = participantChats.map((chat) => chat.chat_id);
+    if (chatIds.length === 0) return [];
 
-    // 2️⃣ If it doesn't exist, create it
-    if (!chatExists) {
-      const { data: newChat, error: createErr } = await supabase
-        .from("chats")
-        .insert({
-          chat_id: chatId,
-          is_group: false, // or true if it’s a group
-        })
-        .select()
-        .single();
-
-      if (createErr) {
-        console.error("Error creating new chat:", createErr.message);
-        return;
-      }
-
-      // Optionally, insert both participants too:
-      const { error: participantsErr } = await supabase
-        .from("chat_participants")
-        .insert([
-          { chat_id: chatId, user_id: payload.from },
-          { chat_id: chatId, user_id: payload.to },
-        ]);
-
-      if (participantsErr) {
-        console.error("Error adding participants:", participantsErr.message);
-        return;
-      }
-    }
-
-    // 3️⃣ Insert the message
-    const { error: msgErr } = await supabase.from("messages").insert({
-      id: crypto.randomUUID(), // <- your PK must be unique!
-      chat_id: chatId,
-      from_id: payload.from,
-      to_id: payload.to,
-      message: payload.message,
-      type: payload.type,
-      time_sent: payload.time,
-    });
+    const { data: messages, error: msgErr } = await SupabaseService.supabase
+      .from('messages')
+      .select('*')
+      .in('chat_id', chatIds)
+      .order('time_sent', { ascending: false });
 
     if (msgErr) {
-      console.error("Error inserting message:", msgErr.message);
+      console.error('Error fetching messages:', msgErr.message);
+      return null;
     }
 
-  } catch (e) {
-    console.error("Unexpected error in updateDatabase:", e);
+    return messages;
   }
 
-}
-
-else if (type == 'seen') {
-  try {
-    const { data, error } = await supabase
-      .from("messages")
-      .update({ marked: true })
-      .eq('chat_id', payload.chatId)
-      .eq('time_sent', payload.time);
-
-    if (error) {
-      console.error("Error marking message as seen:", error.message);
-    } else {
-      console.log("Seen update OK:", data);
+  async updateDatabase(payload: any, type: msg_type): Promise<void> {
+    if (type === 'chat') {
+      await this.insertChatMessage(payload);
+    } else if (type === 'seen') {
+      await this.markMessageAsSeen(payload );
     }
-  } catch (e) {
-    console.error(e);
   }
-}
 
+  private async insertChatMessage(payload: any): Promise<void> {
+    try {
+      const { data: chatExists, error: chatErr } = await SupabaseService.supabase
+        .from('chats')
+        .select('chat_id')
+        .eq('chat_id', payload.chatId)
+        .maybeSingle();
 
-}
+      if (chatErr) {
+        console.error('Error checking chat:', chatErr.message);
+        return;
+      }
 
-export async function fetchActiveUsers(Contacts:String[]):Promise<{contact:String , payload:UserProfileData}[]>{
-  
-  
-  try{
-   
-    
+      if (!chatExists) {
+        const { data: newChat, error: createErr } = await SupabaseService.supabase
+          .from('chats')
+          .insert({ chat_id: payload.chatId, is_group: false })
+          .select()
+          .single();
 
-      const {data,error} = await supabase.from('user_profiles').select('*').in('phone_number',Contacts);
-      if(error!=null){
-        console.error(error);
+        if (createErr) {
+          console.error('Error creating chat:', createErr.message);
+          return;
+        }
+
+        const { error: participantsErr } = await SupabaseService.supabase
+          .from('chat_participants')
+          .insert([
+            { chat_id: payload.chatId, user_id: payload.from },
+            { chat_id: payload.chatId, user_id: payload.to },
+          ]);
+
+        if (participantsErr) {
+          console.error('Error inserting participants:', participantsErr.message);
+          return;
+        }
+      }
+
+      const { error: msgErr } = await SupabaseService.supabase.from('messages').insert({
+        id: crypto.randomUUID(),
+        chat_id: payload.chatId,
+        from_id: payload.from,
+        to_id: payload.to,
+        message: payload.message,
+        type: payload.type,
+        time_sent: payload.time,
+      });
+
+      if (msgErr) {
+        console.error('Error inserting message:', msgErr.message);
+      }
+    } catch (e) {
+      console.error('Unexpected error inserting chat message:', e);
+    }
+  }
+
+  private async markMessageAsSeen(payload: any): Promise<void> {
+    try {
+      const { data, error } = await SupabaseService.supabase
+        .from('messages')
+        .update({ marked: true })
+        .eq('chat_id', payload.chatId)
+        .eq('time_sent', payload.time);
+
+      if (error) {
+        console.error('Error marking as seen:', error.message);
+      } else {
+        console.log('Marked as seen:', data);
+      }
+    } catch (e) {
+      console.error('Unexpected error in markMessageAsSeen:', e);
+    }
+  }
+
+  static async fetchActiveUsers(contacts: string[]): Promise<{ contact: string; payload: UserProfileData }[]> {
+    try {
+      const { data, error } = await SupabaseService.supabase
+        .from('user_profiles')
+        .select('*')
+        .in('phone_number', contacts);
+
+      if (error) {
+        console.error('Error fetching active users:', error.message);
         return [];
       }
-      else{
-        return data.map((e)=>({contact: e.phone_number, 
-          payload: e,
-       } ));
-        
+
+      return data.map((e) => ({
+        contact: e.phone_number,
+        payload: e as UserProfileData,
+      }));
+    } catch (e) {
+      console.error('Unexpected error fetching active users:', e);
+      return [];
+    }
+  }
+
+  async registerCall(payload: any, status?: CallStatus): Promise<void> {
+    try {
+      const { data, error } = await SupabaseService.supabase.from('calls').insert({
+        id: payload.id,
+        caller_id: payload.from,
+        receiver_id: payload.to,
+        call_type: payload.call_type,
+        status: status,
+      });
+
+      if (error) {
+        console.error('Error registering call:', error.message);
+        return;
       }
-      
-    
-    
 
-  }
-  catch(e){
-    console.error(e);
-     return [];
+      console.log('Call registered:', data);
+    } catch (e) {
+      console.error('Unexpected error in registerCall:', e);
+    }
   }
 
+ async updateCall(callId: string, status: CallStatus): Promise<void> {
+    try {
+      const now = new Date().toISOString();
+      const { error } = await SupabaseService.supabase
+        .from('calls')
+        .update({
+          ended_at: now,
+          status: status,
+        })
+        .eq('id', callId);
 
+      if (error) {
+        console.error('Error updating call:', error.message);
+      }
+    } catch (e) {
+      console.error('Unexpected error in updateCall:', e);
+    }
+  }
+ static async fetchCallHistory(userId:String):Promise<{data:any|null,error:String|null}>{
+   const {error,data} =await SupabaseService.supabase.from('calls').select('*').
+   or(`caller_id.eq.${userId},receiver_id.eq.${userId}`);
+   if(error!=null){
+    return {data:null,error:error.message};
+   }
+   else{
+    return {error:null,data:data};
+
+   }
+  }
 }
